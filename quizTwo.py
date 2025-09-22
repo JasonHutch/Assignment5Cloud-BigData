@@ -187,7 +187,7 @@ else:
 
 if not st.session_state.show_results:
     # Add tabs for different query types
-    tab1, tab2, tab3 = st.tabs(["🌍 Location-Based Query", "📍 Coordinate Range Query", "🗑️ Delete by Net Value"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["🌍 Location-Based Query", "📍 Coordinate Range Query", "🗑️ Delete by Net Value", "➕ Add New Record", "✏️ Update Record"])
     
     with tab1:
         # STEP 1: ORIGINAL QUERY FORM
@@ -366,8 +366,16 @@ if not st.session_state.show_results:
                 try:
                     count_query = f"SELECT COUNT(*) as count FROM {table_fqn} WHERE net = '{selected_net}'"
                     count_result = run_sql(count_query)
+                    print(f"DEBUG: count_result columns: {count_result.columns.tolist()}")
+                    print(f"DEBUG: count_result data: {count_result.to_dict()}")
+                    
                     if len(count_result) > 0:
-                        count_to_delete = int(count_result.iloc[0]['count'])
+                        # Handle different possible column names
+                        if 'count' in count_result.columns:
+                            count_to_delete = int(count_result.iloc[0]['count'])
+                        else:
+                            # Use the first column if 'count' doesn't exist
+                            count_to_delete = int(count_result.iloc[0, 0])
                         if count_to_delete > 0:
                             st.warning(f"⚠️ This will delete **{count_to_delete:,}** records with net value: **{selected_net}**")
                         else:
@@ -381,9 +389,8 @@ if not st.session_state.show_results:
             # Debug info (remove this after testing)
             st.write(f"Debug: selected_net='{selected_net}', delete_confirm={delete_confirm}, count_to_delete={count_to_delete}")
             
-            # Submit button - simplified condition
-            button_disabled = not (selected_net and delete_confirm and count_to_delete > 0)
-            if st.form_submit_button("🗑️ Count and Delete Records", type="primary", disabled=button_disabled):
+            # Submit button - always enabled
+            if st.form_submit_button("🗑️ Count and Delete Records", type="primary"):
                 if selected_net and delete_confirm:
                     st.session_state.query_params = {
                         'selected_net': selected_net,
@@ -392,6 +399,217 @@ if not st.session_state.show_results:
                     }
                     st.session_state.show_results = True
                     st.rerun()
+    
+    with tab4:
+        # STEP 1: ADD NEW RECORD FORM
+        st.markdown("### ➕ Add New Record")
+        st.markdown("Create a new tuple with all attributes. The system will check if the ID already exists.")
+        
+        with st.form("add_record_form"):
+            st.subheader("Enter Record Details")
+            
+            # All attributes based on quizTwo schema: time, lat, long, mag, nst, net, id
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Time input (separate date and time)
+                record_date = st.date_input("Date", 
+                                          value=pd.to_datetime("2024-01-01").date(),
+                                          help="Date of the earthquake")
+                record_time_only = st.time_input("Time", 
+                                                value=pd.to_datetime("12:00:00").time(),
+                                                help="Time of the earthquake")
+                # Combine date and time
+                record_time = pd.to_datetime(f"{record_date} {record_time_only}")
+                
+                # Latitude input
+                record_lat = st.number_input("Latitude", 
+                                           min_value=-90.0, max_value=90.0, 
+                                           value=32.8, step=0.000001, format="%.6f",
+                                           help="Latitude coordinate (-90 to 90)")
+                
+                # Longitude input
+                record_long = st.number_input("Longitude", 
+                                            min_value=-180.0, max_value=180.0, 
+                                            value=-96.8, step=0.000001, format="%.6f",
+                                            help="Longitude coordinate (-180 to 180)")
+                
+                # Magnitude input
+                record_mag = st.number_input("Magnitude", 
+                                           min_value=0.0, max_value=10.0, 
+                                           value=2.5, step=0.1, format="%.1f",
+                                           help="Earthquake magnitude (0-10)")
+            
+            with col2:
+                # NST input
+                record_nst = st.number_input("NST (Number of Stations)", 
+                                           min_value=0, max_value=1000, 
+                                           value=10, step=1,
+                                           help="Number of seismic stations")
+                
+                # Net input - get existing values for dropdown
+                existing_nets = []
+                if "net" in df.columns:
+                    try:
+                        unique_nets = df["net"].dropna().astype(str).unique()
+                        existing_nets = sorted([net for net in unique_nets if net.strip() != ''])
+                    except:
+                        existing_nets = []
+                
+                if existing_nets:
+                    record_net = st.selectbox("Network", 
+                                            options=existing_nets + ["Other"],
+                                            help="Seismic network identifier")
+                    if record_net == "Other":
+                        record_net = st.text_input("Custom Network", placeholder="e.g., custom")
+                else:
+                    record_net = st.text_input("Network", 
+                                             placeholder="e.g., ci, nc, tx",
+                                             help="Seismic network identifier")
+                
+                # ID input - this is the key field we'll validate
+                record_id = st.text_input("ID", 
+                                        placeholder="e.g., earthquake_12345",
+                                        help="Unique identifier for this earthquake record")
+            
+            # Submit button - always enabled
+            if st.form_submit_button("➕ Add New Record", type="primary"):
+                st.session_state.query_params = {
+                    'record_time': record_time,
+                    'record_lat': record_lat,
+                    'record_long': record_long,
+                    'record_mag': record_mag,
+                    'record_nst': record_nst,
+                    'record_net': record_net,
+                    'record_id': record_id,
+                    'query_type': 'add_record'
+                }
+                st.session_state.show_results = True
+                st.rerun()
+    
+    with tab5:
+        # STEP 1: UPDATE RECORD FORM
+        st.markdown("### ✏️ Update Existing Record")
+        st.markdown("Find a record by net ID or time, then modify any of its attributes.")
+        
+        with st.form("update_record_form"):
+            st.subheader("Find Record to Update")
+            
+            # Search method selection
+            search_method = st.radio("Search by:", ["Net ID", "Time"], horizontal=True)
+            
+            col1, col2 = st.columns(2)
+            
+            if search_method == "Net ID":
+                with col1:
+                    search_net_id = st.text_input("Enter Net ID to find", 
+                                                placeholder="e.g., earthquake_12345",
+                                                help="Enter the ID of the record you want to update")
+                with col2:
+                    st.write("")  # spacing
+                search_time = None
+            else:
+                with col1:
+                    search_date = st.date_input("Search Date", 
+                                              value=pd.to_datetime("2024-01-01").date(),
+                                              help="Date of the earthquake to find")
+                with col2:
+                    search_time_only = st.time_input("Search Time", 
+                                                    value=pd.to_datetime("12:00:00").time(),
+                                                    help="Time of the earthquake to find")
+                search_time = pd.to_datetime(f"{search_date} {search_time_only}")
+                search_net_id = None
+            
+            st.markdown("---")
+            st.subheader("New Values (leave blank to keep current value)")
+            
+            # Update fields - all optional
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Time update
+                st.markdown("**Update Time:**")
+                update_date = st.date_input("New Date", value=None, help="Leave blank to keep current date")
+                update_time_only = st.time_input("New Time", value=None, help="Leave blank to keep current time")
+                
+                # Latitude update
+                update_lat = st.number_input("New Latitude", 
+                                           min_value=-90.0, max_value=90.0, 
+                                           value=None, step=0.000001, format="%.6f",
+                                           help="Leave blank to keep current latitude")
+                
+                # Longitude update
+                update_long = st.number_input("New Longitude", 
+                                            min_value=-180.0, max_value=180.0, 
+                                            value=None, step=0.000001, format="%.6f",
+                                            help="Leave blank to keep current longitude")
+                
+                # Magnitude update
+                update_mag = st.number_input("New Magnitude", 
+                                           min_value=0.0, max_value=10.0, 
+                                           value=None, step=0.1, format="%.1f",
+                                           help="Leave blank to keep current magnitude")
+            
+            with col2:
+                # NST update
+                update_nst = st.number_input("New NST", 
+                                           min_value=0, max_value=1000, 
+                                           value=None, step=1,
+                                           help="Leave blank to keep current NST")
+                
+                # Net update
+                existing_nets = []
+                if "net" in df.columns:
+                    try:
+                        unique_nets = df["net"].dropna().astype(str).unique()
+                        existing_nets = sorted([net for net in unique_nets if net.strip() != ''])
+                    except:
+                        existing_nets = []
+                
+                if existing_nets:
+                    update_net = st.selectbox("New Network", 
+                                            options=["(keep current)"] + existing_nets + ["Other"],
+                                            help="Select new network or keep current")
+                    if update_net == "Other":
+                        update_net = st.text_input("Custom Network", placeholder="e.g., custom")
+                    elif update_net == "(keep current)":
+                        update_net = None
+                else:
+                    update_net = st.text_input("New Network", 
+                                             placeholder="Leave blank to keep current",
+                                             help="Leave blank to keep current network")
+                    if update_net == "":
+                        update_net = None
+                
+                # ID update
+                update_id = st.text_input("New ID", 
+                                        placeholder="Leave blank to keep current ID",
+                                        help="Leave blank to keep current ID")
+                if update_id == "":
+                    update_id = None
+            
+            # Submit button - always enabled
+            if st.form_submit_button("✏️ Update Record", type="primary"):
+                # Combine date and time if both provided
+                update_time = None
+                if update_date is not None and update_time_only is not None:
+                    update_time = pd.to_datetime(f"{update_date} {update_time_only}")
+                
+                st.session_state.query_params = {
+                    'search_method': search_method,
+                    'search_net_id': search_net_id,
+                    'search_time': search_time,
+                    'update_time': update_time,
+                    'update_lat': update_lat,
+                    'update_long': update_long,
+                    'update_mag': update_mag,
+                    'update_nst': update_nst,
+                    'update_net': update_net,
+                    'update_id': update_id,
+                    'query_type': 'update_record'
+                }
+                st.session_state.show_results = True
+                st.rerun()
 
 else:
     # STEP 2: RESULTS
@@ -476,9 +694,20 @@ else:
         
         try:
             # First, get total count before deletion
-            total_before_query = f"SELECT COUNT(*) as total FROM {table_fqn}"
+            total_before_query = f"SELECT COUNT(*) as count FROM {table_fqn}"
             total_before_result = run_sql(total_before_query)
-            total_before = total_before_result.iloc[0]['total'] if len(total_before_result) > 0 else 0
+            print(f"DEBUG: total_before_result columns: {total_before_result.columns.tolist()}")
+            print(f"DEBUG: total_before_result data: {total_before_result.to_dict()}")
+            
+            # Handle different possible column names
+            if len(total_before_result) > 0:
+                if 'count' in total_before_result.columns:
+                    total_before = int(total_before_result.iloc[0]['count'])
+                else:
+                    # Use the first column if 'count' doesn't exist
+                    total_before = int(total_before_result.iloc[0, 0])
+            else:
+                total_before = 0
             
             # Execute the delete operation
             delete_query = f"DELETE FROM {table_fqn} WHERE net = '{selected_net}'"
@@ -510,6 +739,160 @@ else:
             
         except Exception as e:
             st.error(f"Delete operation failed: {e}")
+    
+    elif query_type == 'add_record':
+        # Handle add record operation
+        st.subheader("➕ Add Record Results")
+        
+        # Get record data from params
+        record_time = params.get('record_time')
+        record_lat = params.get('record_lat')
+        record_long = params.get('record_long')
+        record_mag = params.get('record_mag')
+        record_nst = params.get('record_nst')
+        record_net = params.get('record_net')
+        record_id = params.get('record_id')
+        
+        st.info(f"Processing addition of new record with ID: **{record_id}**")
+        
+        try:
+            # Format the INSERT query
+            formatted_time = record_time.strftime("%Y-%m-%d %H:%M:%S")
+            insert_query = f"""
+            INSERT INTO {table_fqn} (time, lat, long, mag, nst, net, id)
+            VALUES (
+                to_timestamp('{formatted_time}'),
+                {record_lat},
+                {record_long},
+                {record_mag},
+                {record_nst},
+                '{record_net}',
+                '{record_id}'
+            )
+            """
+            
+            st.code(f"Executing: {insert_query}")
+            
+            # Execute the actual INSERT operation
+            insert_result = run_sql(insert_query)
+            st.success(f"✅ INSERT executed successfully!")
+            
+            # Show success message and record details
+            st.success(f"✅ Successfully added new record with ID '{record_id}'")
+            
+            # Display the record that was added
+            st.subheader("Record Added")
+            record_display = {
+                "Time": formatted_time,
+                "Latitude": record_lat,
+                "Longitude": record_long,
+                "Magnitude": record_mag,
+                "NST": record_nst,
+                "Network": record_net,
+                "ID": record_id
+            }
+            
+            # Show as a nice table
+            import pandas as pd
+            record_df = pd.DataFrame([record_display])
+            st.dataframe(record_df, use_container_width=True)
+            
+            # Show updated table count
+            try:
+                total_count_query = f"SELECT COUNT(*) as count FROM {table_fqn}"
+                total_count_result = run_sql(total_count_query)
+                if len(total_count_result) > 0:
+                    if 'count' in total_count_result.columns:
+                        total_records = int(total_count_result.iloc[0]['count'])
+                    else:
+                        total_records = int(total_count_result.iloc[0, 0])
+                    
+                    st.info(f"📊 Total records in table: {total_records:,} (including the new record)")
+            except Exception as e:
+                st.warning(f"Could not get updated record count: {e}")
+                
+        except Exception as e:
+            st.error(f"Add record operation failed: {e}")
+    
+    elif query_type == 'update_record':
+        # Handle update record operation
+        st.subheader("✏️ Update Record Results")
+        
+        # Get search and update parameters
+        search_method = params.get('search_method')
+        search_net_id = params.get('search_net_id')
+        search_time = params.get('search_time')
+        
+        st.info(f"Searching for record by {search_method}: **{search_net_id if search_method == 'Net ID' else search_time}**")
+        
+        try:
+            # Build WHERE clause for finding the record
+            if search_method == "Net ID":
+                where_clause = f"WHERE id = '{search_net_id}'"
+            else:
+                formatted_search_time = search_time.strftime("%Y-%m-%d %H:%M:%S")
+                where_clause = f"WHERE time = to_timestamp('{formatted_search_time}')"
+            
+            # First, find the existing record
+            find_query = f"SELECT * FROM {table_fqn} {where_clause}"
+            st.code(f"Finding record: {find_query}")
+            
+            existing_records = run_sql(find_query)
+            
+            if len(existing_records) == 0:
+                st.error(f"❌ No record found with {search_method}: {search_net_id if search_method == 'Net ID' else search_time}")
+            elif len(existing_records) > 1:
+                st.warning(f"⚠️ Multiple records found ({len(existing_records)}). Will update all matching records.")
+                st.dataframe(existing_records, use_container_width=True)
+            else:
+                st.success(f"✅ Found 1 record to update")
+                st.dataframe(existing_records, use_container_width=True)
+            
+            # Build UPDATE query with only non-None values
+            update_parts = []
+            update_time = params.get('update_time')
+            update_lat = params.get('update_lat')
+            update_long = params.get('update_long')
+            update_mag = params.get('update_mag')
+            update_nst = params.get('update_nst')
+            update_net = params.get('update_net')
+            update_id = params.get('update_id')
+            
+            if update_time is not None:
+                formatted_update_time = update_time.strftime("%Y-%m-%d %H:%M:%S")
+                update_parts.append(f"time = to_timestamp('{formatted_update_time}')")
+            if update_lat is not None:
+                update_parts.append(f"lat = {update_lat}")
+            if update_long is not None:
+                update_parts.append(f"long = {update_long}")
+            if update_mag is not None:
+                update_parts.append(f"mag = {update_mag}")
+            if update_nst is not None:
+                update_parts.append(f"nst = {update_nst}")
+            if update_net is not None:
+                update_parts.append(f"net = '{update_net}'")
+            if update_id is not None:
+                update_parts.append(f"id = '{update_id}'")
+            
+            if not update_parts:
+                st.warning("⚠️ No updates specified. Please provide at least one field to update.")
+            else:
+                # Execute the UPDATE
+                update_query = f"UPDATE {table_fqn} SET {', '.join(update_parts)} {where_clause}"
+                st.code(f"Executing: {update_query}")
+                
+                update_result = run_sql(update_query)
+                st.success(f"✅ UPDATE executed successfully!")
+                
+                # Show the updated record(s)
+                st.subheader("Updated Record(s)")
+                updated_records = run_sql(find_query)
+                st.dataframe(updated_records, use_container_width=True)
+                
+                st.success(f"✅ Successfully updated {len(existing_records)} record(s)")
+                
+        except Exception as e:
+            st.error(f"Update record operation failed: {e}")
     
     else:
         # Build query for regular queries
