@@ -1,11 +1,7 @@
 # streamlit_app.py
 import os
-import io
-import socket
-import time
 import pandas as pd
 import streamlit as st
-import requests
 
 from dotenv import load_dotenv
 from components.data_form import FoodDataForm
