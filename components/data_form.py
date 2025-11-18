@@ -79,7 +79,6 @@ def EarthquakeDataForm(df):
 
 def FoodDataForm(df):
     with st.form("food_query_form"):
-        # Form fields in a clean layout
         col1,= st.columns(1)
         with col1:
             amt_range = st.slider(
@@ -89,11 +88,32 @@ def FoodDataForm(df):
                 value=(10,25)
             )
         
+        # Simplified coordinate input section
+        st.write("**Enter coordinate pairs (X, Y, Color) - up to 10 points**")
+        coordinates = []
+        
+        for i in range(10):
+            with st.expander(f"Point {i+1}", expanded=(i==0)):
+                col_x, col_y, col_c = st.columns(3)
+                with col_x:
+                    x = st.number_input(f"X", key=f"x_{i}")
+                with col_y:
+                    y = st.number_input(f"Y", key=f"y_{i}")
+                with col_c:
+                    color = st.color_picker(f"Color", value="#1f77b4", key=f"color_{i}")
+        
         # Submit
         if st.form_submit_button("Run Food Query", type="primary"):
+            coordinates = []
+            for i in range(10):
+                x = st.session_state.get(f"x_{i}", 0)
+                y = st.session_state.get(f"y_{i}", 0)
+                color = st.session_state.get(f"color_{i}", "#1f77b4")
+                coordinates.append({"x": x, "y": y, "color": color})
+            
             st.session_state.query_params = {
-                'amt_range':amt_range
+                'amt_range': amt_range,
+                'coordinates': coordinates
             }
             st.session_state.show_results = True
             st.rerun()
-    

@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 from components.data_form import FoodDataForm
 from lib.helpers import build_food_query
 from lib.databricks_sql import run_food_sql
-from components.visualizations import food_amount_bar_chart, food_amount_pie_chart
+from components.visualizations import food_amount_bar_chart, food_amount_pie_chart, coordinate_scatter_plot
 load_dotenv()
 DATABRICKS_SERVER_HOSTNAME = os.getenv("DATABRICKS_SERVER_HOSTNAME")
 DATABRICKS_HTTP_PATH = os.getenv("DATABRICKS_HTTP_PATH")
@@ -71,14 +71,14 @@ else:
         
         # # # Visualizations
         st.subheader("Visualizations")
-        viz_col1, viz_col2 = st.columns(2)
+        viz_col1, viz_col2, viz_col3 = st.columns(3)
         
         with viz_col1:
             food_amount_bar_chart(filtered_df)
         with viz_col2:
             food_amount_pie_chart(filtered_df)
-        # with viz_col3:
-        #     avg_magnitude_per_net_scatter(filtered_df)
+        with viz_col3:
+            coordinate_scatter_plot(params.get('coordinates', []))
         
         # Data table
         st.dataframe(filtered_df, use_container_width=True, height=600)

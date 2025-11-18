@@ -64,4 +64,24 @@ def food_amount_pie_chart(df: pd.DataFrame, title: str = "Amount by Food (Pie Ch
     ax.axis('equal')
     st.pyplot(fig)
 
+def coordinate_scatter_plot(coordinates: list, title: str = "Coordinate Scatter Plot"):
+    """Render a scatter plot from coordinate pairs with custom colors."""
+    if not coordinates or len(coordinates) == 0:
+        st.warning("No coordinates provided.")
+        return
+    
+    st.subheader(title)
+    fig, ax = plt.subplots()
+    
+    for coord in coordinates:
+        x = coord.get("x", 0)
+        y = coord.get("y", 0)
+        color = coord.get("color", "#1f77b4")
+        ax.scatter(x, y, s=100, color=color, edgecolors='black', linewidth=1)
+    
+    ax.set_xlabel("X")
+    ax.set_ylabel("Y")
+    ax.grid(True, alpha=0.3)
+    st.pyplot(fig)
+
 
