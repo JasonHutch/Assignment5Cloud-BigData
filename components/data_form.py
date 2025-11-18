@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 
-def DataForm(df):
+def EarthquakeDataForm(df):
     with st.form("earthquake_query_form"):
         # Try to get default dates from data, otherwise use reasonable defaults
         default_start = None
@@ -75,3 +75,25 @@ def DataForm(df):
             st.session_state.show_results = True
             st.rerun()
 
+
+
+def FoodDataForm(df):
+    with st.form("food_query_form"):
+        # Form fields in a clean layout
+        col1,= st.columns(1)
+        with col1:
+            amt_range = st.slider(
+                "Select a price range",
+                min_value=0,
+                max_value=50,
+                value=(10,25)
+            )
+        
+        # Submit
+        if st.form_submit_button("Run Food Query", type="primary"):
+            st.session_state.query_params = {
+                'amt_range':amt_range
+            }
+            st.session_state.show_results = True
+            st.rerun()
+    

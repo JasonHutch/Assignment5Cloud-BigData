@@ -38,3 +38,30 @@ def avg_magnitude_per_net_scatter(df: pd.DataFrame, title: str = "Average Magnit
     agg_df = df.groupby("net")["mag"].mean().reset_index()
     st.subheader(title)
     st.scatter_chart(agg_df, x="net", y="mag", use_container_width=True)
+
+def food_amount_bar_chart(df: pd.DataFrame, title: str = "Amount by Food"):
+    """Render a bar chart showing amount per food item."""
+    if "Food" not in df.columns or "Amount" not in df.columns or len(df) == 0:
+        st.warning("Required columns 'Food' or 'Amount' not found or no data available.")
+        return
+    df = df.copy()
+    df["Amount"] = pd.to_numeric(df["Amount"], errors="coerce")
+    agg_df = df.groupby("Food")["Amount"].sum().sort_values(ascending=False)
+    st.subheader(title)
+    st.bar_chart(agg_df, use_container_width=True)
+
+def food_amount_pie_chart(df: pd.DataFrame, title: str = "Amount by Food (Pie Chart)"):
+    """Render a pie chart showing amount distribution by food item."""
+    if "Food" not in df.columns or "Amount" not in df.columns or len(df) == 0:
+        st.warning("Required columns 'Food' or 'Amount' not found or no data available.")
+        return
+    df = df.copy()
+    df["Amount"] = pd.to_numeric(df["Amount"], errors="coerce")
+    agg_df = df.groupby("Food")["Amount"].sum()
+    st.subheader(title)
+    fig, ax = plt.subplots()
+    ax.pie(agg_df, labels=agg_df.index, autopct='%1.1f%%', startangle=90)
+    ax.axis('equal')
+    st.pyplot(fig)
+
+
